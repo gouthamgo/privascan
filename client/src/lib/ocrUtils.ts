@@ -19,19 +19,16 @@ export function cleanOCRText(text: string): string {
     .replace(/^[E]{2,}[\s—–-]*\n/gm, "")
     // Remove patterns like "ES ERNE RE EEE"
     .replace(/^[A-Z]{1,3}\s+[A-Z]{2,4}\s+[A-Z]{2,4}\s+[A-Z]{1,3}\s*\n/gm, "")
-    // Remove lines starting with parentheses (binding hole artifacts)
-    .replace(/^\([^)]*\)\s*\n/gm, "")
+    // Remove lines starting with parentheses followed by noise
+    .replace(/^\([^)]*\).*\n/gm, "")
     // Remove lines of mostly symbols
-    .replace(/^[\\|/(){}\[\]]+\s*\n/gm, "")
+    .replace(/^[\\|/(){}\[\]0-9\s]+\n/gm, "")
     // Remove quoted short words like "em
     .replace(/^["']\w{1,3}\s*\n/gm, "")
     // Remove quoted short words at end of lines
-    .replace(/\s+["']\w{1,3}\s*$/gm, "")
-    // Remove lines with excessive symbols and few letters (like "(0 \ oN Nl | fi fl HERI i I ll 1) I fh li")
-    .replace(/^[^a-zA-Z]*[a-zA-Z]{1,2}[^a-zA-Z]*[a-zA-Z]{1,2}[^a-zA-Z]*[a-zA-Z]{1,2}[^a-zA-Z]*$/gm, "");
+    .replace(/\s+["']\w{1,3}\s*$/gm, "");
 
-  // Remove stray list markers that appear randomly in text (like "1)", "2)", "a)", etc.)
-  // These are often OCR artifacts from bullet points or numbered lists misread
+  // Remove stray list markers that appear randomly in text
   cleaned = cleaned
     // Remove standalone number/letter with parenthesis in the middle of text
     .replace(/\s+\d+\)\s+/g, " ")
@@ -44,6 +41,8 @@ export function cleanOCRText(text: string): string {
     .replace(/\s*\|\s*/g, " ")
     // Remove stray brackets
     .replace(/\s*[\[\]]\s*/g, " ")
+    // Remove backslashes (common OCR artifact)
+    .replace(/\s*\\\s*/g, " ")
     // Remove stray single characters that are likely noise (but keep "I" and "a")
     .replace(/\s+[b-hj-zB-HJ-Z]\s+/g, " ");
 
@@ -56,18 +55,48 @@ export function cleanOCRText(text: string): string {
   // Normalize line breaks (remove excessive blank lines)
   cleaned = cleaned.replace(/\n\n+/g, "\n");
 
-  // Remove lines that are mostly non-alphabetic characters (likely noise)
+  // Filter out noise lines
   const lines = cleaned.split("\n");
   const filteredLines = lines.filter((line) => {
     const trimmed = line.trim();
-    if (trimmed.length === 0) return false; // Remove empty lines
+    if (trimmed.length === 0) return false;
 
+    // Count words and analyze structure
+    const words = trimmed.split(/\s+/);
+    const wordCount = words.length;
+
+    // Check for lines with many short fragments (likely noise)
+    // Pattern like "(0 \ oN Nl fi fl HERI i I ll I fh li"
+    const shortWordCount = words.filter(w => w.length <= 2).length;
+    const shortWordRatio = shortWordCount / wordCount;
+
+    // If more than 60% of words are 1-2 chars and there are many words, it's noise
+    if (wordCount >= 4 && shortWordRatio > 0.6) {
+      return false;
+    }
+
+    // Check for ligature artifact patterns (fi, fl, ff, fh, li, ll, etc.)
+    const ligaturePattern = /^[\s\d()\[\]\\|\/]*(?:[fli]{2}|[A-Z]{1,2}[\s\\|]+)+[\s\d()\[\]\\|\/]*$/i;
+    if (ligaturePattern.test(trimmed)) {
+      return false;
+    }
+
+    // Check alphabetic ratio
     const alphaCount = (trimmed.match(/[a-zA-Z]/g) || []).length;
     const totalChars = trimmed.length;
 
     // Keep line if it has at least 50% alphabetic characters
-    // Slightly less aggressive to preserve more content
-    return alphaCount / totalChars > 0.5;
+    if (alphaCount / totalChars <= 0.5) {
+      return false;
+    }
+
+    // Check average word length - real text usually has longer average words
+    const avgWordLength = words.reduce((sum, w) => sum + w.length, 0) / wordCount;
+    if (wordCount >= 3 && avgWordLength < 2.5) {
+      return false;
+    }
+
+    return true;
   });
 
   cleaned = filteredLines.join("\n").trim();

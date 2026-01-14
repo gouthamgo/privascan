@@ -33,19 +33,20 @@ function securityHeaders(_req: Request, res: Response, next: NextFunction) {
     "camera=(), microphone=(), geolocation=(), interest-cohort=(), payment=(), usb=(), bluetooth=(), serial=(), hid=()"
   );
 
-  // Content Security Policy - strict policy with no external resources
+  // Content Security Policy - strict policy allowing only Tesseract.js CDN
   // 'unsafe-eval' required for Tesseract.js WebAssembly
   // 'unsafe-inline' required for React inline styles
+  // jsdelivr.net required for Tesseract.js worker scripts
   res.setHeader(
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self'",
       "img-src 'self' data: blob:",
-      "worker-src 'self' blob:",
-      "connect-src 'self' blob:",
+      "worker-src 'self' blob: https://cdn.jsdelivr.net",
+      "connect-src 'self' blob: https://cdn.jsdelivr.net",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
